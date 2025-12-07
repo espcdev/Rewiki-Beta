@@ -4,37 +4,56 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Rewiki</title>
+
+    <!-- Tailwind + fonts -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- Theme persistence -->
+    <script>
+      const savedTheme = localStorage.getItem("rewiki_theme");
+      if (savedTheme === "dark") {
+        document.documentElement.classList.add("dark");
+      }
+    </script>
+
+    <!-- Tailwind config -->
     <script>
       tailwind.config = {
-        darkMode: 'class',
+        darkMode: "class",
         theme: {
           extend: {
             fontFamily: {
-              sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+              sans: ['"Plus Jakarta Sans"', "sans-serif"],
             },
             colors: {
-              background: 'var(--background)',
-              foreground: 'var(--foreground)',
-              muted: 'var(--muted)',
-              'muted-foreground': 'var(--muted-foreground)',
-              border: 'var(--border)',
+              background: "var(--background)",
+              foreground: "var(--foreground)",
+              muted: "var(--muted)",
+              "muted-foreground": "var(--muted-foreground)",
+              border: "var(--border)",
             },
             animation: {
-              'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-              'fade-in-up': 'fadeInUp 0.5s ease-out forwards',
+              "pulse-slow": "pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite",
+              "fade-in-up": "fadeInUp 0.5s ease-out forwards",
             },
             keyframes: {
               fadeInUp: {
-                '0%': { opacity: '0', transform: 'translateY(10px)' },
-                '100%': { opacity: '1', transform: 'translateY(0)' },
-              }
-            }
+                "0%": { opacity: "0", transform: "translateY(10px)" },
+                "100%": { opacity: "1", transform: "translateY(0)" },
+              },
+            },
           },
         },
-      }
+      };
     </script>
+
+    <!-- Theme vars -->
     <style>
       :root {
         --background: #ffffff;
@@ -50,44 +69,13 @@
         --muted-foreground: #a1a1aa;
         --border: #27272a;
       }
-      body {
-        background-color: var(--background);
-        color: var(--foreground);
-        -webkit-font-smoothing: antialiased;
-        transition: background-color 0.3s, color 0.3s;
-      }
-      /* Hide scrollbar for Chrome, Safari and Opera */
-      .no-scrollbar::-webkit-scrollbar {
-          display: none;
-      }
-      /* Hide scrollbar for IE, Edge and Firefox */
-      .no-scrollbar {
-          -ms-overflow-style: none;  /* IE and Edge */
-          scrollbar-width: none;  /* Firefox */
-      }
-      
-      ::selection {
-        background-color: #000;
-        color: #fff;
-      }
-      .dark ::selection {
-        background-color: #fff;
-        color: #000;
-      }
     </style>
-  <script type="importmap">
-{
-  "imports": {
-    "react/": "https://aistudiocdn.com/react@^19.2.0/",
-    "react": "https://aistudiocdn.com/react@^19.2.0",
-    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.30.0",
-    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.555.0",
-    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/"
-  }
-}
-</script>
-</head>
-  <body>
+  </head>
+
+  <body class="no-scrollbar">
     <div id="root"></div>
+
+    <!-- Load React App (Vite entry) -->
+    <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
