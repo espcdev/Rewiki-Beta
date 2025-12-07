@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { RewikiArticle } from '../types';
 import { Button, Badge, Modal, Card } from './ui';
-import { ArrowLeft, SplitSquareHorizontal, PenLine, Sparkles, CheckCircle2, AlertCircle, Lightbulb, GraduationCap, BrainCircuit, ArrowRight, History } from 'lucide-react';
+import { ArrowLeft, SplitSquareHorizontal, PenLine, Sparkles, CheckCircle2, AlertCircle, Lightbulb, GraduationCap, BrainCircuit, ArrowRight, History, Image as ImageIcon } from 'lucide-react';
 import { analyzeRevision } from '../services/geminiService';
 
 interface ArticleViewProps {
@@ -16,11 +16,20 @@ export const ArticleView: React.FC<ArticleViewProps> = ({ article, onBack, onUpd
   const [selection, setSelection] = useState<{ text: string; top: number; left: number } | null>(null);
   const [quizState, setQuizState] = useState<{ [key: number]: number | null }>({}); // questionIndex -> selectedOptionIndex
   
+  // Image Error States
+  const [imgError, setImgError] = useState(false);
+  const [secImgError, setSecImgError] = useState(false);
+
   // Revision State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [revisionReason, setRevisionReason] = useState('');
+  const [editType, setEditType] = useState<'fix' | 'add'>('fix');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [revisionResult, setRevisionResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  // Determine which image to show for primary header
+  const activeImage = (!imgError && article.realImageUrl) ? article.realImageUrl : article.generatedImage;
+  const isRealImage = !imgError && !!article.realImageUrl;
 
   // Localization Helpers
   const t = (key: string) => {
@@ -34,16 +43,20 @@ export const ArticleView: React.FC<ArticleViewProps> = ({ article, onBack, onUpd
       verified: { en: "Verified Rewiki", es: "Rewiki Verificado" },
       updated: { en: "Updated", es: "Actualizado" },
       generated: { en: "AI Generated Diagram", es: "Diagrama generado por IA" },
+      realImage: { en: "Web Image", es: "Imagen de la Web" },
       modalTitle: { en: "Propose a Change", es: "Proponer un cambio" },
-      whyChange: { en: "Why should this be changed?", es: "¿Por qué debería cambiarse esto?" },
+      whyChange: { en: "Describe your change", es: "Describe tu cambio" },
       cancel: { en: "Cancel", es: "Cancelar" },
       apply: { en: "Analyze & Apply", es: "Analizar y Aplicar" },
       placeholder: { en: "This info is outdated...", es: "Esta información es antigua..." },
       didYouKnow: { en: "Did You Know?", es: "¿Sabías Que?" },
       homework: { en: "Homework Help", es: "Ayuda para tu Tarea" },
-      generalEdit: { en: "General Edit / Add Section", es: "Edición General / Agregar Sección" },
+      generalEdit: { en: "General Edit", es: "Edición General" },
       quizTitle: { en: "Quick Quiz", es: "Test Rápido" },
-      explore: { en: "Explore More", es: "Explorar Más" }
+      explore: { en: "Explore More", es: "Explorar Más" },
+      fixInfo: { en: "Fix Information", es: "Corregir Información" },
+      addSection: { en: "Add New Section", es: "Añadir Nueva Sección" },
+      selectType: { en: "Revision Type", es: "Tipo de Revisión" }
     };
     return labels[key][article.language] || key;
   };
@@ -75,6 +88,7 @@ export const ArticleView: React.FC<ArticleViewProps> = ({ article, onBack, onUpd
 
   const handleStartRevision = () => {
     setIsModalOpen(true);
+    setEditType('fix'); // Default
   };
 
   const submitRevision = async () => {
@@ -88,7 +102,8 @@ export const ArticleView: React.FC<ArticleViewProps> = ({ article, onBack, onUpd
         JSON.stringify(article.sections),
         selection?.text || "General Article Update",
         revisionReason,
-        article.language
+        article.language,
+        editType
       );
 
       if (result.accepted) {
@@ -100,21 +115,33 @@ export const ArticleView: React.FC<ArticleViewProps> = ({ article, onBack, onUpd
           setRevisionReason('');
           setRevisionResult(null);
           
-          const newSections = article.sections.map(s => {
-              if (selection && s.content.includes(selection.text)) {
-                  return { ...s, content: result.newContent || s.content };
-              }
-              return s;
-          });
+          let newSections = [...article.sections];
 
-          if (!selection && result.newContent) {
-             newSections[0].content = result.newContent; 
+          if (editType === 'add' && result.newContent) {
+             // Add new section
+             newSections.push({
+                id: Date.now().toString(),
+                heading: "New Section", // Simplification: in real app AI would give heading too
+                content: result.newContent
+             });
+          } else {
+              // Fix existing
+              newSections = article.sections.map(s => {
+                if (selection && s.content.includes(selection.text)) {
+                    return { ...s, content: result.newContent || s.content };
+                }
+                return s;
+            });
+            // If general update (no selection) and fix, update first section or summary (simplified)
+            if (!selection && result.newContent && editType === 'fix') {
+                 newSections[0].content = result.newContent;
+            }
           }
 
           onUpdateArticle({
               ...article,
               sections: newSections,
-              changeLog: `${article.changeLog} | User edit applied.`
+              changeLog: `${article.changeLog} | ${editType === 'add' ? 'Added section' : 'Fixed info'}`
           });
           
         }, 1500);
@@ -156,6 +183,24 @@ export const ArticleView: React.FC<ArticleViewProps> = ({ article, onBack, onUpd
         <div className="space-y-4">
             <div className="p-3 bg-neutral-100 dark:bg-neutral-800 rounded-xl text-sm italic text-neutral-600 dark:text-neutral-400 border-l-4 border-black dark:border-white">
                 {selection ? `"${selection.text}"` : <span className="not-italic font-medium">{t('generalEdit')}</span>}
+            </div>
+
+            {/* Edit Type Dropdown */}
+            <div>
+                 <label className="block text-sm font-semibold mb-2 dark:text-neutral-300">{t('selectType')}</label>
+                 <div className="relative">
+                    <select 
+                        value={editType} 
+                        onChange={(e) => setEditType(e.target.value as 'fix' | 'add')}
+                        className="w-full p-3 rounded-xl bg-neutral-50 dark:bg-neutral-800 border-none focus:ring-2 focus:ring-black dark:focus:ring-white outline-none appearance-none dark:text-white"
+                    >
+                        <option value="fix">{t('fixInfo')}</option>
+                        <option value="add">{t('addSection')}</option>
+                    </select>
+                    <div className="absolute right-3 top-3 pointer-events-none text-neutral-500">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+                    </div>
+                 </div>
             </div>
             
             <div>
@@ -211,7 +256,7 @@ export const ArticleView: React.FC<ArticleViewProps> = ({ article, onBack, onUpd
                 variant={showOriginal ? "primary" : "secondary"} 
                 onClick={() => setShowOriginal(!showOriginal)}
                 icon={SplitSquareHorizontal}
-                className={!showOriginal ? "backdrop-blur-md bg-white/80 dark:bg-neutral-900/80" : ""}
+                className={`w-36 transition-all duration-300 ${!showOriginal ? "backdrop-blur-md bg-white/80 dark:bg-neutral-900/80" : ""}`}
             >
                 {showOriginal ? t('compare') : 'Rewiki'}
             </Button>
@@ -233,12 +278,24 @@ export const ArticleView: React.FC<ArticleViewProps> = ({ article, onBack, onUpd
           </h1>
         </div>
 
-        {/* Generated Image */}
-        {article.generatedImage ? (
-             <div className="w-full rounded-[2.5rem] overflow-hidden shadow-2xl border border-neutral-100 dark:border-neutral-800 relative group">
-                <img src={article.generatedImage} alt={article.topic} className="w-full object-cover max-h-[500px]" />
+        {/* Featured Image (Real or Generated) */}
+        {activeImage ? (
+             <div className="w-full rounded-[2.5rem] overflow-hidden shadow-2xl border border-neutral-100 dark:border-neutral-800 relative group bg-neutral-100 dark:bg-neutral-800">
+                <img 
+                    src={activeImage} 
+                    alt={article.topic} 
+                    className="w-full object-cover max-h-[500px]" 
+                    onError={() => setImgError(true)}
+                />
                 <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-6 text-white opacity-0 group-hover:opacity-100 transition-opacity">
-                    <p className="text-sm font-medium flex items-center gap-2"><Sparkles className="w-4 h-4"/> {t('generated')}</p>
+                    <p className="text-sm font-medium flex items-center gap-2">
+                        {isRealImage ? <ImageIcon className="w-4 h-4"/> : <Sparkles className="w-4 h-4"/>} 
+                        {isRealImage ? t('realImage') : t('generated')}
+                    </p>
+                </div>
+                {/* Always visible badge for context */}
+                <div className="absolute top-4 right-4 px-3 py-1 bg-black/50 backdrop-blur-md rounded-full text-xs font-bold text-white border border-white/20">
+                     {isRealImage ? 'WEB IMAGE' : 'AI GENERATED'}
                 </div>
              </div>
         ) : (
@@ -284,16 +341,34 @@ export const ArticleView: React.FC<ArticleViewProps> = ({ article, onBack, onUpd
               </Card>
             )}
 
-            {/* Sections */}
+            {/* Sections Loop with Secondary Image Injection */}
             {article.sections.map((section, idx) => (
-              <section key={idx} className="group relative">
-                <h3 className="text-2xl font-bold mb-3 mt-8 text-black dark:text-white">
-                  {section.heading}
-                </h3>
-                <p className="text-lg text-neutral-700 dark:text-neutral-300 leading-relaxed text-justify selection:bg-black selection:text-white dark:selection:bg-white dark:selection:text-black">
-                  {section.content}
-                </p>
-              </section>
+              <React.Fragment key={idx}>
+                <section className="group relative">
+                    <h3 className="text-2xl font-bold mb-3 mt-8 text-black dark:text-white">
+                    {section.heading}
+                    </h3>
+                    <p className="text-lg text-neutral-700 dark:text-neutral-300 leading-relaxed text-justify selection:bg-black selection:text-white dark:selection:bg-white dark:selection:text-black">
+                    {section.content}
+                    </p>
+                </section>
+
+                {/* Secondary Image Injection Logic */}
+                {((idx === 1 && article.sections.length >= 2) || (idx === 0 && article.sections.length < 2)) && article.secondaryImageUrl && !secImgError && (
+                    <div className="my-12 relative w-full h-[400px] rounded-[2.5rem] overflow-hidden shadow-2xl border border-neutral-100 dark:border-neutral-800 group/sec">
+                         <div className="absolute top-4 left-4 px-3 py-1 bg-black/50 backdrop-blur-md rounded-full text-xs font-bold text-white border border-white/20 z-10">
+                            MORE INFO
+                        </div>
+                        <img 
+                            src={article.secondaryImageUrl} 
+                            alt="Contextual"
+                            onError={() => setSecImgError(true)}
+                            className="w-full h-full object-cover transition-transform duration-700 group-hover/sec:scale-110" 
+                        />
+                         <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent pointer-events-none" />
+                    </div>
+                )}
+              </React.Fragment>
             ))}
 
             {/* Did you know & Homework */}

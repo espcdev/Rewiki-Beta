@@ -7,16 +7,12 @@ const getAiClient = () => {
   if (!aiClient) {
     let apiKey = '';
     try {
-      // Very strict safe access to process.env.API_KEY
-      // This prevents "Illegal constructor" or ReferenceError in environments where process is not defined
       if (typeof process !== 'undefined' && typeof process.env !== 'undefined') {
         apiKey = process.env.API_KEY || '';
       }
     } catch (e) {
       console.warn("Could not access process.env.API_KEY", e);
     }
-    
-    // Fallback or empty string is better than crashing on constructor if key is missing during init
     aiClient = new GoogleGenAI({ apiKey: apiKey });
   }
   return aiClient;
@@ -46,6 +42,11 @@ const generateTopicImage = async (prompt: string): Promise<string | undefined> =
   }
 };
 
+// Helper to clean Markdown JSON code blocks
+const cleanJson = (text: string): string => {
+  return text.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/\s*```$/, '').trim();
+};
+
 export const generateRewikiArticle = async (topic: string, lang: Language): Promise<RewikiArticle> => {
   const modelId = "gemini-2.5-flash"; 
 
@@ -58,70 +59,47 @@ export const generateRewikiArticle = async (topic: string, lang: Language): Prom
   Topic: "${topic}"
   Language: ${langInstruction}
 
-  Generate a JSON response:
-  1. "summary": A very clear, concise summary (TL;DR).
-  2. "sections": 3-4 key sections. give each section a unique "id".
-  3. "imagePrompts": A list of 1 very descriptive prompt to generate an educational image about this topic.
-  4. "originalSnippet": A simulated complex/boring Wikipedia paragraph about this topic for comparison.
-  5. "changeLog": What you simplified (in ${lang}).
-  6. "didYouKnow": A fun/surprising fact about the topic.
-  7. "homeworkHelp": An array of 3 key bullet points useful for a student's homework.
-  8. "relatedTopics": An array of 3 related topics (strings) to explore next.
-  9. "quiz": An array of 3 multiple choice questions to test understanding. { question, options, correctAnswer (index) }.
-  10. "lastUpdated": Current date.
+  IMPORTANT: Return ONLY valid JSON. Do not use Markdown code blocks. The response must be a single valid JSON object.
+
+  Structure:
+  {
+    "topic": "Title of the topic",
+    "summary": "A very clear, concise summary (TL;DR)",
+    "sections": [{ "id": "unique_id", "heading": "Section Title", "content": "Content..." }],
+    "imagePrompts": ["A descriptive prompt for an educational image"],
+    "realImageUrl": "Use the Google Search tool to find a direct URL to a high-quality, public domain image (preferably Wikimedia Commons) representing the topic. Must be a valid JPG/PNG URL.",
+    "secondaryImageUrl": "Use Google Search to find a SECOND different image URL (diagram, detail, or contextual photo) from Wikimedia, Pexels, or Unsplash. Must be a valid image URL.",
+    "originalSnippet": "A simulated complex/boring Wikipedia paragraph about this topic",
+    "changeLog": "What you simplified",
+    "didYouKnow": "A fun fact",
+    "homeworkHelp": ["Bullet point 1", "Bullet point 2", "Bullet point 3"],
+    "relatedTopics": ["Topic 1", "Topic 2", "Topic 3"],
+    "quiz": [{ "question": "Question?", "options": ["A", "B", "C"], "correctAnswer": 0 }],
+    "lastUpdated": "Current Date"
+  }
   
-  The tone should be educational, objective, and modern.`;
+  The tone should be educational, objective, and modern. Use the Google Search tool to ensure facts are up-to-date and to find the realImageUrl and secondaryImageUrl.`;
 
   try {
     const response = await getAiClient().models.generateContent({
       model: modelId,
       contents: prompt,
       config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            topic: { type: Type.STRING },
-            summary: { type: Type.STRING },
-            sections: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  id: { type: Type.STRING },
-                  heading: { type: Type.STRING },
-                  content: { type: Type.STRING },
-                }
-              }
-            },
-            imagePrompts: { type: Type.ARRAY, items: { type: Type.STRING } },
-            originalSnippet: { type: Type.STRING },
-            changeLog: { type: Type.STRING },
-            didYouKnow: { type: Type.STRING },
-            homeworkHelp: { type: Type.ARRAY, items: { type: Type.STRING } },
-            relatedTopics: { type: Type.ARRAY, items: { type: Type.STRING } },
-            quiz: {
-                type: Type.ARRAY,
-                items: {
-                    type: Type.OBJECT,
-                    properties: {
-                        question: { type: Type.STRING },
-                        options: { type: Type.ARRAY, items: { type: Type.STRING } },
-                        correctAnswer: { type: Type.INTEGER }
-                    }
-                }
-            },
-            lastUpdated: { type: Type.STRING },
-          },
-          required: ["topic", "summary", "sections", "imagePrompts", "originalSnippet", "changeLog", "didYouKnow", "homeworkHelp", "relatedTopics", "quiz"]
-        }
+        tools: [{ googleSearch: {} }], // Enable Google Search Grounding
       }
     });
 
     if (response.text) {
-      const data = JSON.parse(response.text) as RewikiArticle;
+      const cleanText = cleanJson(response.text);
+      let data: RewikiArticle;
       
-      // Assign ID and Language
+      try {
+        data = JSON.parse(cleanText) as RewikiArticle;
+      } catch (parseError) {
+        console.error("Failed to parse JSON", cleanText);
+        throw new Error("Invalid JSON response from AI");
+      }
+      
       data.id = Date.now().toString();
       data.language = lang;
 
@@ -129,7 +107,7 @@ export const generateRewikiArticle = async (topic: string, lang: Language): Prom
         data.lastUpdated = new Date().toLocaleDateString();
       }
 
-      // 2. Generate Image in parallel
+      // 2. Generate Image in parallel (as backup)
       if (data.imagePrompts && data.imagePrompts.length > 0) {
          const image = await generateTopicImage(data.imagePrompts[0]);
          if (image) {
@@ -151,23 +129,29 @@ export const analyzeRevision = async (
   currentText: string, 
   userSelection: string, 
   userRequest: string,
-  lang: Language
+  lang: Language,
+  editType: 'fix' | 'add' = 'fix'
 ): Promise<RevisionResult> => {
   const modelId = "gemini-2.5-flash";
   
   const prompt = `You are the Rewiki Quality Control AI. A user wants to edit an article.
   Language Context: ${lang === 'es' ? 'Spanish' : 'English'}.
+  Edit Type: ${editType === 'add' ? 'Add new section/content' : 'Fix/Correct existing information'}.
   
   Current Text Context: "${currentText.substring(0, 500)}..."
   User Selected Text (if any): "${userSelection}"
-  User's Requested Change: "${userRequest}"
+  User's Requested Change/Addition: "${userRequest}"
 
   Analyze:
   1. Is it factually correct?
   2. Is it objective?
+
+  IMPORTANT: Return ONLY valid JSON. Do not use Markdown.
+  Structure: { "accepted": boolean, "newContent": "string (optional)", "reasoning": "string" }
   
-  If YES: Return accepted: true, and "newContent" (the rewritten text).
-  If NO: Return accepted: false, "reasoning" (why).
+  If editType is 'add', generate the new section content in "newContent".
+  If editType is 'fix', generate the corrected text replacement in "newContent".
+  If rejected, explain why in "reasoning".
   `;
 
   try {
@@ -175,24 +159,17 @@ export const analyzeRevision = async (
       model: modelId,
       contents: prompt,
       config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            accepted: { type: Type.BOOLEAN },
-            newContent: { type: Type.STRING },
-            reasoning: { type: Type.STRING }
-          },
-          required: ["accepted", "reasoning"]
-        }
+        tools: [{ googleSearch: {} }], // Use search to verify user claims
       }
     });
 
     if (response.text) {
-      return JSON.parse(response.text) as RevisionResult;
+      const cleanText = cleanJson(response.text);
+      return JSON.parse(cleanText) as RevisionResult;
     }
     throw new Error("Analysis failed");
   } catch (e) {
-    return { accepted: false, reasoning: "AI Service unavailable." };
+    console.error(e);
+    return { accepted: false, reasoning: "AI Service unavailable or response invalid." };
   }
 };

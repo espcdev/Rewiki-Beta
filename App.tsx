@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { Search, Sparkles, BookOpen, Menu, User, ArrowRight, X, Moon, Sun, Info, Globe, Clock, Check, FileText, Zap, History } from 'lucide-react';
+import { Search, Sparkles, BookOpen, Menu, User, ArrowRight, X, Moon, Sun, Info, Globe, Clock, Check, FileText, Zap, History as HistoryIcon } from 'lucide-react';
 import { generateRewikiArticle } from './services/geminiService';
 import { RewikiArticle, ViewState, Language } from './types';
 import { ArticleView } from './components/ArticleView';
@@ -296,7 +296,7 @@ export default function App() {
 
                       <div className="flex-1 space-y-6 relative z-10 opacity-60">
                           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-white/20 dark:border-black/20 text-xs font-bold uppercase tracking-wider">
-                             <History className="w-3 h-3" /> {txt.oldWay}
+                             <HistoryIcon className="w-3 h-3" /> {txt.oldWay}
                           </div>
                           <h3 className="text-3xl font-bold">{txt.slow}</h3>
                           <p className="opacity-80 text-lg leading-relaxed">{txt.wikiDesc}</p>

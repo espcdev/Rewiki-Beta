@@ -19,13 +19,15 @@ export interface RewikiArticle {
   sections: ArticleSection[];
   imagePrompts: string[];
   generatedImage?: string;
+  realImageUrl?: string; // Primary header image from search
+  secondaryImageUrl?: string; // New: Secondary contextual image from search
   originalSnippet: string;
   lastUpdated: string;
   changeLog: string;
   didYouKnow: string;
   homeworkHelp: string[];
-  quiz: QuizQuestion[]; // New Feature
-  relatedTopics: string[]; // New Feature
+  quiz: QuizQuestion[];
+  relatedTopics: string[];
   language: Language;
 }
 
